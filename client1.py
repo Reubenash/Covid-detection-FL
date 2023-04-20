@@ -5,11 +5,20 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import tensorflow_federated as tff
 
 from keras.applications.vgg19 import VGG19
 from keras.layers import Dense, Flatten
 from keras.models import Model
 from keras.preprocessing.image import ImageDataGenerator
+from keras.applications.inception_v3 import InceptionV3
+from keras.layers import GlobalAveragePooling2D
+
+#from tensorflow_federated.proto.v0 import common_pb2
+
+#grpc_max_message_length = tff.framework.common_pb2.MAX_SUPPORTED_MESSAGE_BYTES
+
+
 
 #controller code
 from controller import client1_weights
@@ -23,6 +32,7 @@ from controller import client1_batch_size
 from controller import client1_epochs
 from controller import client1_verbose
 from controller import client1_grpc_max_message_length
+from controller import server_address
 
 # Auxiliary methods
 def getDist(y):
@@ -31,16 +41,19 @@ def getDist(y):
     plt.show()
 
 # Load and compile Keras model
-vgg = VGG19(weights=client1_weights, include_top=include_top, input_shape=input_shape)      #called in the controller
-# Freeze first 10 layers
-for layer in vgg.layers[:10]:
+inception = InceptionV3(weights='imagenet', include_top=False, input_shape=input_shape)
+
+for layer in inception.layers[:10]:
     layer.trainable = False
-x = vgg.output
-x = Flatten()(x)
+
+x = inception.output
+x = GlobalAveragePooling2D()(x)
 x = Dense(128, activation='relu')(x)
 x = Dense(256, activation='relu')(x)
-predictions = Dense(client1_number_of_classes, activation='softmax')(x)  # change number of classes to 2 for covid and normal  #called in controller
-model = Model(inputs=vgg.input, outputs=predictions)
+predictions = Dense(client1_number_of_classes, activation='softmax')(x)
+
+model = Model(inputs=inception.input, outputs=predictions)
+
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
 # Load dataset
@@ -76,7 +89,7 @@ class FlowerClient(fl.client.NumPyClient):
 
 # Start Flower client
 fl.client.start_numpy_client(
-        server_address="localhost:"+str(sys.argv[1]),  #not added in controller
+        server_address=server_address,  #not added in controller
         client=FlowerClient(), 
         grpc_max_message_length = client1_grpc_max_message_length * client1_grpc_max_message_length * client1_grpc_max_message_length
 )
